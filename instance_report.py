@@ -2,46 +2,45 @@ import google.auth
 from googleapiclient.discovery import build
 import json
 
-# Configuração da autenticação e cliente Compute Engine
-credentials, project = google.auth.default()
+# List of projects (you can add or modify your project IDs here)
+projects = ['your-project-id-1', 'your-project-id-2']  # Replace with your project IDs
 
-# Verificando se o projeto foi obtido corretamente
-if not project:
-    print("Erro: Nenhum projeto foi identificado. Verifique as credenciais e autenticação.")
-    project = "seu-projeto-id"  # Substitua pelo seu ID de projeto
-    print(f"Usando o projeto manualmente: {project}")
+# List of zones in North America and Europe
+zones = [
+    'us-central1-a', 'us-west1-b', 'us-east1-c', 'us-east4-a',  # North America
+    'europe-west1-b', 'europe-west2-c', 'europe-west3-d', 'europe-west4-a', 'europe-west6-a'  # Europe
+]
 
-compute_service = build('compute', 'v1', credentials=credentials)
-
-# Função para listar as instâncias de máquina virtual
-def list_instances():
-    zone = 'us-central1-a'  # Defina a zona desejada ou use 'global' para todas as zonas
-    instances = []
+# Function to list instances
+def list_instances(project, zone):
+    compute_service = build('compute', 'v1', credentials=credentials)
     
-    # Listando as instâncias da zona especificada
+    # Fetching instances in the zone
     result = compute_service.instances().list(project=project, zone=zone).execute()
     
-    # Adicionando as instâncias encontradas à lista
-    if 'items' in result:
-        instances.extend(result['items'])
-    
+    instances = result.get('items', [])
     return instances
 
-# Função para verificar o estado de execução das instâncias
-def check_instance_status(instance):
+# Function to check the status of instances
+def check_instance_status(instance_name, zone):
+    compute_service = build('compute', 'v1', credentials=credentials)
+    project_id = project
+    
+    # Check the status of the instance
+    instance = compute_service.instances().get(project=project_id, zone=zone, instance=instance_name).execute()
     return instance['status'] == 'RUNNING'
 
-# Função para gerar o relatório com IP público
+# Function to generate the report
 def generate_report(instances):
     report = []
     for instance in instances:
         instance_name = instance['name']
-        zone = instance['zone'].split('/')[-1]  # Extraímos a zona do campo 'zone'
+        zone = instance['zone'].split('/')[-1]  # Extract the zone from the 'zone' field
         
-        # Verifica se a instância está em execução
-        if check_instance_status(instance):
+        # Check if the instance is running
+        if check_instance_status(instance_name, zone):
             public_ip = None
-            # Buscando o endereço IP público
+            # Fetch the public IP address
             for network_interface in instance.get('networkInterfaces', []):
                 if 'accessConfigs' in network_interface:
                     for access_config in network_interface['accessConfigs']:
@@ -49,7 +48,7 @@ def generate_report(instances):
                             public_ip = access_config.get('natIP')
                             break
             
-            # Link para acessar a instância no console
+            # Link to access the instance in the console
             instance_link = f'https://console.cloud.google.com/compute/instancesDetail/zones/{zone}/instances/{instance_name}?project={project}'
             
             report.append({
@@ -62,17 +61,24 @@ def generate_report(instances):
     
     return report
 
-# Função principal
+# Main function
 def main():
-    instances = list_instances()
-    report = generate_report(instances)
-    
-    # Salvando o relatório em um arquivo JSON
-    with open('instances_report.json', 'w') as f:
-        json.dump(report, f, indent=4)
-    
-    print("Relatório gerado com sucesso! Verifique o arquivo 'instances_report.json'.")
+    # Iterate over the projects and zones
+    for project in projects:
+        for zone in zones:
+            print(f"Fetching instances in project {project} in zone {zone}...")
+            instances = list_instances(project, zone)
+            report = generate_report(instances)
+            
+            # Saving the report to a JSON file
+            with open(f'instances_report_{project}_{zone}.json', 'w') as f:
+                json.dump(report, f, indent=4)
+            
+            print(f"Report generated successfully for {project} in zone {zone}! Check the file 'instances_report_{project}_{zone}.json'.")
 
-# Rodando o script
+# Authentication setup and Compute client
+credentials, project = google.auth.default()
+ 
+# Run the script
 if __name__ == '__main__':
     main()
